@@ -1,0 +1,218 @@
+---
+title: "Clubes de convergencia do VAB agro"
+author: "Davi Garcia Miranda"
+date: "13/07/2022"
+output: html_document
+---
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+install.packages("knitr")
+install.packages("rmdformats")
+library(knitr)
+library(rmarkdown)
+library(rmdformats)
+
+## Global options
+options(max.print="100")
+opts_chunk$set(echo=TRUE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=100)
+```
+
+## Procedimentos padrão
+
+### Carregar todos os pacotes necessários ao trabalho
+```{r}
+library(readxl)
+library(readr)
+library(dplyr)
+library(panelr)
+library(mFilter)
+library(ConvergenceClubs)
+```
+
+### Puxar os dados
+
+```{r}
+View(dados_vabagro)
+dados <- read_excel("DADOS_MUNI_TRAB_2002_2017 (2).csv")
+View(dados)
+str(dados)
+class(dados)
+```
+
+### Reorganizando dataframe com as váriaveis a serem utilizadas (melt reshape)
+
+```{r}
+dados_vabagro = dados[,c(2,3,5,8)]
+View(dados_vabagro)
+str(dados_vabagro)
+```
+
+### Fazendo a transformação da váriavel VABagro para numérica
+
+```{r}
+dados_vabagro$VABagro <- as.numeric(dados_vabagro$VABagro)
+View(dados_vabagro)
+str(dados_vabagro)
+```
+
+##Agora com os dados devidamento organizados foi realizada uma ánalise descritiva dos dados através da função `summary()`
+
+```{r}
+summary(dados_vabagro)
+```
+
+## converter dados_vabagro em panel data - formato para se trabalhar com dados em painel
+
+```{r}
+dados.panel<-panel_data(dados_vabagro, id=i, wave = t)
+class(dados.panel$i)
+```
+
+## Mudar o formato para o formato largo, que é melhor para se trabalhar com panel data
+
+### Converter em wide format
+
+```{r}
+dados.wide<-widen_panel(dados.panel)
+class(dados.wide$i)    
+``` 
+
+### É preciso retirar NAs
+
+```{r}
+dados.wide.complete<-na.omit(dados.wide)
+summary(dados.wide.complete)
+View(dados.wide.complete)
+```
+
+
+### Irei criar uma coluna numerica para i, para não dar problema no algoritmo mais à frente
+
+```{r}
+dados.wide.complete$id<-as.numeric(dados.wide.complete$i)  # coluna 19
+str(dados.wide.complete)
+```
+
+
+## Filtragem dos dados para evitar ciclos de negocios (recomendacao SICHERA, R.; PIZZUTO, P. ConvergenceClubs)
+
+### Carregar GDP
+
+```{r}
+GDP<-dados.wide.complete
+```
+
+### Realizar a filtragem das datas para evitar ciclos de negocios (algoritmo criado pelo autor SICHERA, R.; PIZZUTO, P. ConvergenceClubs)
+
+```{r}
+View(GDP)
+logGDP <- log(GDP[,3:18])
+filteredGDP <- apply(logGDP, 1,
+                     function(x){mFilter::hpfilter(x, freq=400, type="lambda")$trend} )
+dados_filtrados <- data.frame(GDP[,1:2], t(filteredGDP),GDP[,19], stringsAsFactors=FALSE )
+colnames(dados_filtrados) <- colnames(GDP[1:19])
+
+View(dados_filtrados)
+```
+
+## Cluster com VAB Agro de 2002 a 2018
+
+```{r}
+clubs <- findClubs(dados_filtrados, 
+                   dataCols=3:19, 
+                   unit_names = 2, 
+                   refCol=19,      
+                   time_trim = 1/3, 
+                   cstar = 0,
+                   cstar_method = 'incremental',
+                   cstar_increment = 0.1,
+                   HACmethod = "FQSB")
+summary(clubs)
+View(clubs)
+```
+
+### Plotar os gráficos dos caminhos de transição para cada clube, e seu caminho de transição médio
+
+```{r}
+plot(clubs)
+```
+
+
+### Apenas os gráficos dos caminhos de transição médio dos clubes
+
+```{r}
+plot(clubs, clubs=NULL)
+plot(clubs, clubs=NULL, legend=TRUE)
+```
+
+
+### pegando os dados de quem está em cada clube
+
+```{r}
+print(clubs$club1)
+print(clubs$club2)
+print(clubs$club3)
+print(clubs$club4)
+print(clubs$club5)
+print(clubs$club6)
+print(clubs$club7)
+print(clubs$club8)
+```
+
+
+## Merge clusters, realiza a junção de possíveis clubes (se julgar que dá para juntar clubes)
+
+```{r}
+mclubs <- mergeClubs(clubs, mergeMethod='PS', mergeDivergent=FALSE)
+summary(mclubs)  # ele julgou que dá para juntar clubes 
+print(mclubs$club1)
+print(mclubs$club2)
+print(mclubs$club3)
+print(mclubs$club4)
+```
+
+### Gráficos de transição após a junção (merge) dos clubes
+
+```{r}
+plot(mclubs)
+plot(mclubs, clubs=NULL)
+plot(mclubs, clubs=NULL, legend=TRUE)
+```
+
+
+## segundo metodo de juntar grupos
+
+```{r}
+mclubs2 <- mergeClubs(clubs, mergeMethod='vLT', mergeDivergent=FALSE)
+summary(mclubs2)  # ele julgou que dá para juntar clubes um pouco distinto do anterior
+print(mclubs2$club1)
+print(mclubs2$club2)
+print(mclubs2$club3)
+print(mclubs2$club4)
+print(mclubs2$club5)
+print(mclubs2$club6)
+```
+
+
+### Novos gráficos de clubes através da função merge com 'vLT'
+
+```{r}
+plot(mclubs2)
+plot(mclubs2, clubs=NULL)
+plot(mclubs2, clubs=NULL, legend=TRUE)
+```
+
+# Referências {#Referências .unnumbered}
+
+PHILLIPS, P. C. B.; SUL, D. Transition modeling and econometric convergence tests. Econometrica, 75 (6): 1771--1855, 2007. URL <https://doi.org/10.1111/j.1468-0262.2007.00811.x>.
+
+PHILLIPS, P. C. B.; SUL, D. Economic transition and growth. Journal of Applied Econometrics, 24(7): 1153--1185, 2009. URL <https://doi.org/10.1002/jae.1080>.
+
+SICHERA, R.; PIZZUTO, P. ConvergenceClubs: A Package for Performing the Phillips and Sul's Club Convergence Clustering Procedure. The R Journal Vol. 11/2, December 2019.
